@@ -23,11 +23,13 @@ def scrape(search_term, location, results_wanted=10):
     jobs = jobs[available].fillna("")
     jobs = jobs.drop_duplicates(subset=["title", "company"])
     if "description" in jobs.columns:
-        jobs["description"] = jobs["description"].str[:600]
+        jobs["description"] = jobs["description"].str[:500]
     if "date_posted" in jobs.columns:
         jobs["date_posted"] = jobs["date_posted"].astype(str)
     result = jobs.to_dict(orient="records")
     result = [{k: str(v) if hasattr(v, "isoformat") else v for k, v in job.items()} for job in result]
+    # Cap at 12 to avoid token limits
+    result = result[:12]
     print(f"[Scraper] Found {len(result)} jobs.")
     return result
 
@@ -50,24 +52,37 @@ Here are the job listings in JSON:
 For EACH job, return a JSON object with:
 - title, company, location, site, job_url
 - score: integer 0-100
-- reasoning: 2-3 sentences explaining the score
-- green_flags: list of matching positives
-- red_flags: list of concerns
+- reasoning: 1-2 sentences explaining the score
+- green_flags: list of up to 3 matching positives
+- red_flags: list of up to 3 concerns
 
 Return ONLY a valid JSON array sorted by score descending.
 No markdown, no explanation, just the raw JSON array.
+Keep each reasoning field short (under 30 words).
 """
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.2,
-        max_tokens=4000,
+        max_tokens=6000,
     )
     raw = response.choices[0].message.content.strip()
     if raw.startswith("```"):
         raw = raw.split("\n", 1)[1]
         raw = raw.rsplit("```", 1)[0]
-    scored = json.loads(raw)
+    try:
+        scored = json.loads(raw)
+    except json.JSONDecodeError:
+        # Try to salvage partial JSON
+        try:
+            last_brace = raw.rfind("},")
+            if last_brace > 0:
+                raw = raw[:last_brace + 1] + "]"
+                scored = json.loads(raw)
+            else:
+                return []
+        except Exception:
+            return []
     print("[Analyst] Scoring complete.")
     return scored
 
@@ -79,7 +94,7 @@ def generate_report(scored_jobs, search_term, location):
     print("[Reporter] Generating digest...")
     prompt = f"""
 You are producing a job digest report. Here are scored job listings in JSON:
-{json.dumps(scored_jobs[:15], indent=2)}
+{json.dumps(scored_jobs[:10], indent=2)}
 
 Produce a clean markdown report:
 
