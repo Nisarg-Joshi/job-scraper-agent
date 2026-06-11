@@ -1,7 +1,4 @@
 python-jobspy
-crewai
-crewai-tools
 groq
 streamlit
-pandas
 python-dotenv
