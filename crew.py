@@ -23,13 +23,13 @@ def scrape(search_term, location, results_wanted=10):
     jobs = jobs[available].fillna("")
     jobs = jobs.drop_duplicates(subset=["title", "company"])
     if "description" in jobs.columns:
-        jobs["description"] = jobs["description"].str[:500]
+        jobs["description"] = jobs["description"].str[:250]
     if "date_posted" in jobs.columns:
         jobs["date_posted"] = jobs["date_posted"].astype(str)
     result = jobs.to_dict(orient="records")
     result = [{k: str(v) if hasattr(v, "isoformat") else v for k, v in job.items()} for job in result]
-    # Cap at 12 to avoid token limits
-    result = result[:12]
+    # Cap at 8 to stay within Groq's on-demand tier TPM limit (8000 tokens/request)
+    result = result[:8]
     print(f"[Scraper] Found {len(result)} jobs.")
     return result
 
@@ -64,7 +64,7 @@ Keep each reasoning field short (under 30 words).
         model="openai/gpt-oss-120b",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.2,
-        max_tokens=6000,
+        max_tokens=3000,
     )
     raw = response.choices[0].message.content.strip()
     if raw.startswith("```"):
@@ -94,7 +94,7 @@ def generate_report(scored_jobs, search_term, location):
     print("[Reporter] Generating digest...")
     prompt = f"""
 You are producing a job digest report. Here are scored job listings in JSON:
-{json.dumps(scored_jobs[:10], indent=2)}
+{json.dumps(scored_jobs[:8], indent=2)}
 
 Produce a clean markdown report:
 
